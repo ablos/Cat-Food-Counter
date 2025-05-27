@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 // Memory data
 struct RTCData 
@@ -11,12 +14,23 @@ struct RTCData
 
 // Defenitions
 #define MULTI_PRESS_WINDOW 200 // In ms
+#define OLED_POWER_PIN D4
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+#define SCREEN_ADDRESS 0x3C
 
 // Function declarations
 uint32_t calculateCRC32(const uint8_t *data, size_t length);
 bool readRTCData(RTCData* data);
 void writeRTCData(RTCData* data);
 void decideAction(uint8_t pressCount);
+void checkBatteryVoltage();
+void wakeDisplay();
+
+// Variables
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 void setup()
 {
@@ -58,10 +72,12 @@ void decideAction(uint8_t pressCount)
     switch (pressCount) 
     {
         // Handle single press
-        case 1:
+        case 1: 
             Serial.println("Single press detected");
+            checkBatteryVoltage();
+            wakeDisplay();
             break;
-            
+
         // Handle double press
         case 2:
             Serial.println("Double press detected");
@@ -77,6 +93,51 @@ void decideAction(uint8_t pressCount)
             Serial.println("Too many presses - treating as single");
             break;
     }
+}
+
+void checkBatteryVoltage() 
+{
+    pinMode(A0, INPUT);
+            
+    int adcValue = analogRead(A0);
+    float adcVoltage = (adcValue / 1024.0) * 3.25;
+    float batteryVoltage = adcVoltage * ((330.0 + 680.0) / 680.0);
+
+    Serial.println(adcVoltage);
+    Serial.println(batteryVoltage);
+}
+
+void wakeDisplay() 
+{
+    // Power on OLED screen
+    Serial.println("Turning on display");
+    pinMode(OLED_POWER_PIN, OUTPUT);
+    digitalWrite(OLED_POWER_PIN, HIGH);
+    delay(10);
+
+    // Initialize display
+    if (display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) 
+    {
+        Serial.println("Printing...");
+        // Clear buffer
+        display.clearDisplay();
+        
+        // Set text values
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        display.setCursor(0, 0);
+        
+        // Print text
+        display.println("Hello world!");
+
+        // Put on display
+        display.display();
+    }
+
+    delay(5000);
+
+    // Power down OLED screen
+    digitalWrite(OLED_POWER_PIN, LOW);
 }
 
 bool readRTCData(RTCData* data) 
