@@ -4,12 +4,29 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-// Memory data
+// Structs
+struct FeedingTime 
+{
+    uint8_t hour;
+    uint8_t minute;
+    
+    String toString() 
+    {
+        char buffer[6];
+        sprintf(buffer, "%02d:%02d", hour, minute);
+        return String(buffer);
+    }
+};
+
 struct Memory 
 {
     uint32_t crc32;
     uint32_t lastWakeTime;
     uint8_t pressCount;
+    uint8_t padding1;
+    uint16_t feedings[4];
+    uint8_t feedingCount;
+    uint8_t padding2;
 };
 
 // Defenitions
@@ -30,10 +47,17 @@ void writeMemory(Memory* data);
 void decideAction(uint8_t pressCount);
 void checkBatteryVoltage();
 void wakeDisplay();
+void turnOffDisplay();
+void updateDisplay();
 bool isDisplayOn();
 void waitForDisplayOff();
+void addFeeding(uint16_t timeValue);
+uint16_t getLatestFeeding();
+void removeLatestFeeding();
+void clearAllFeedings();
 
 // Variables
+Memory memoryData;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 unsigned long displayStartTime = 0;
 
@@ -43,33 +67,34 @@ void setup()
     WiFi.mode(WIFI_OFF);               // Explicit WiFi disable
     WiFi.forceSleepBegin();            // Force radio sleep
 
-    Memory data;
-    bool validData = readMemory(&data);
+    bool validData = readMemory(&memoryData);
     uint32_t currentTime = millis();
     
     // Check if this wake is within multi-press window and update press count accordingly
-    if (validData && (currentTime - data.lastWakeTime < MULTI_PRESS_WINDOW)) 
-        data.pressCount++;
+    if (validData && (currentTime - memoryData.lastWakeTime < MULTI_PRESS_WINDOW)) 
+        memoryData.pressCount++;
     else
-        data.pressCount = 1;
+        memoryData.pressCount = 1;
 
     // Save the updated count
-    data.lastWakeTime = currentTime;
-    writeMemory(&data);
+    memoryData.lastWakeTime = currentTime;
+    writeMemory(&memoryData);
 
     Serial.begin(115200);
-    Serial.printf("\n\nPress count: %d\n", data.pressCount);
+    Serial.printf("\n\nPress count: %d\n", memoryData.pressCount);
     
     // Wait to see if more presses are coming
     delay(MULTI_PRESS_WINDOW + 50);
     
     // No more presses came, so reset presscount and execute action
-    uint8_t pressCount = data.pressCount;
-    data.pressCount = 0;
-    writeMemory(&data);
+    uint8_t pressCount = memoryData.pressCount;
+    memoryData.pressCount = 0;
+    writeMemory(&memoryData);
+    wakeDisplay();
     decideAction(pressCount);
 
     // Return to deep sleep
+    waitForDisplayOff();
     ESP.deepSleep(0);
 }
 
@@ -83,9 +108,7 @@ void decideAction(uint8_t pressCount)
         // Handle single press
         case 1: 
             Serial.println("Single press detected");
-            wakeDisplay();
             checkBatteryVoltage();
-            waitForDisplayOff();
             break;
 
         // Handle double press
@@ -130,32 +153,15 @@ void checkBatteryVoltage()
 void wakeDisplay() 
 {
     // Power on OLED screen
-    Serial.println("Turning on display");
     pinMode(OLED_POWER_PIN, OUTPUT);
     digitalWrite(OLED_POWER_PIN, HIGH);
     delay(10);
 
     // Initialize display
-    if (display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) 
-    {
-        Serial.println("Printing...");
-        // Clear buffer
-        display.clearDisplay();
-        
-        // Set text values
-        display.setTextSize(1);
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(0, 0);
-        
-        // Print text
-        display.println("Hello world!");
-
-        // Put on display
-        display.display();
-
-        // Start display timer
-        displayStartTime = millis();
-    }
+    display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
+    
+    // Update display
+    updateDisplay();
 }
 
 void turnOffDisplay() 
@@ -168,6 +174,26 @@ void turnOffDisplay()
     // Power down OLED screen
     pinMode(OLED_POWER_PIN, OUTPUT);
     digitalWrite(OLED_POWER_PIN, LOW);
+}
+
+void updateDisplay() 
+{
+    // Clear buffer
+    display.clearDisplay();
+    
+    // Set text values
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    
+    // Print text
+    display.println("Hello world!");
+
+    // Put on display
+    display.display();
+
+    // Start display timer
+    displayStartTime = millis();
 }
 
 bool isDisplayOn() 
@@ -187,6 +213,56 @@ void waitForDisplayOff()
     {
         yield();
     }
+}
+
+void addFeeding(uint16_t timeValue) 
+{
+    if (memoryData.feedingCount >= 4)
+        return;
+
+    // Shift existing feedings right
+    for (int i = 3; i > 0; i--)
+        memoryData.feedings[i] = memoryData.feedings[i - 1];
+    
+    // Add new feedings at front
+    memoryData.feedings[0] = timeValue;
+    if (memoryData.feedingCount < 4)
+        memoryData.feedingCount++;
+
+    writeMemory(&memoryData);
+}
+
+uint16_t getLatestFeeding() 
+{
+    if (memoryData.feedingCount > 0)
+        return memoryData.feedings[0];
+
+    return 0;
+}
+
+void removeLatestFeeding() 
+{
+    if (memoryData.feedingCount == 0)
+        return;
+        
+    // Shift everything left
+    for (int i = 0; i < 3; i++)
+        memoryData.feedings[i] = memoryData.feedings[i + 1];
+
+    memoryData.feedingCount--;
+    memoryData.feedings[memoryData.feedingCount] = 0;
+
+    writeMemory(&memoryData);
+}
+
+void clearAllFeedings() 
+{
+    memoryData.feedingCount = 0;
+
+    for (int i = 0; i < 4; i++)
+        memoryData.feedings[i] = 0;
+
+    writeMemory(&memoryData);
 }
 
 bool readMemory(Memory* data) 
