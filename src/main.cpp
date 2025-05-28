@@ -13,7 +13,7 @@ struct Memory
 };
 
 // Defenitions
-#define MULTI_PRESS_WINDOW 200 // In ms
+#define MULTI_PRESS_WINDOW 200
 #define OLED_POWER_PIN D4
 #define VDIV_ENABLE_PIN D5
 
@@ -21,6 +21,7 @@ struct Memory
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3C
+#define SCREEN_WAKE_TIME 5000
 
 // Function declarations
 uint32_t calculateCRC32(const uint8_t *data, size_t length);
@@ -29,9 +30,12 @@ void writeMemory(Memory* data);
 void decideAction(uint8_t pressCount);
 void checkBatteryVoltage();
 void wakeDisplay();
+bool isDisplayOn();
+void waitForDisplayOff();
 
 // Variables
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+unsigned long displayStartTime = 0;
 
 void setup()
 {
@@ -79,8 +83,9 @@ void decideAction(uint8_t pressCount)
         // Handle single press
         case 1: 
             Serial.println("Single press detected");
-            checkBatteryVoltage();
             wakeDisplay();
+            checkBatteryVoltage();
+            waitForDisplayOff();
             break;
 
         // Handle double press
@@ -147,6 +152,9 @@ void wakeDisplay()
 
         // Put on display
         display.display();
+
+        // Start display timer
+        displayStartTime = millis();
     }
 }
 
@@ -160,6 +168,25 @@ void turnOffDisplay()
     // Power down OLED screen
     pinMode(OLED_POWER_PIN, OUTPUT);
     digitalWrite(OLED_POWER_PIN, LOW);
+}
+
+bool isDisplayOn() 
+{
+    if (millis() - displayStartTime > SCREEN_WAKE_TIME) 
+    {
+        turnOffDisplay();
+        return false;
+    }
+
+    return true;
+}
+
+void waitForDisplayOff() 
+{
+    while (isDisplayOn()) 
+    {
+        yield();
+    }
 }
 
 bool readMemory(Memory* data) 
