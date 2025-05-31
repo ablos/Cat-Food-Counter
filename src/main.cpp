@@ -30,7 +30,7 @@ struct Memory
 };
 
 // Defenitions
-#define MULTI_PRESS_WINDOW 200
+#define MULTI_PRESS_WINDOW 1000
 #define OLED_POWER_PIN D4
 #define VDIV_ENABLE_PIN D5
 
@@ -83,6 +83,8 @@ void setup()
     Serial.begin(115200);
     Serial.printf("\n\nPress count: %d\n", memoryData.pressCount);
     
+    wakeDisplay();
+    
     // Wait to see if more presses are coming
     delay(MULTI_PRESS_WINDOW + 50);
     
@@ -90,7 +92,6 @@ void setup()
     uint8_t pressCount = memoryData.pressCount;
     memoryData.pressCount = 0;
     writeMemory(&memoryData);
-    wakeDisplay();
     decideAction(pressCount);
 
     // Return to deep sleep
