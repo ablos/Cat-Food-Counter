@@ -1,0 +1,34 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// WiFi Config
+const char *WIFI_SSID = "your-wifi-name";
+const char *WIFI_PASS = "your-wifi-pass";
+
+// Optional: Set static IP for faster connection (better battery life)
+// Leave empty to use DHCP (make your router decide which IP to give)
+const char *STATIC_IP   = "";   // e.g. "192.168.1.150"
+const char *GATEWAY_IP  = "";   // e.g. "192.168.1.1"
+const char *SUBNET_MASK = "";   // e.g. "255.255.255.0"
+const char *DNS_SERVER  = "";   // e.g. "192.168.1.1"
+
+// MQTT Config
+const char *MQTT_SERVER = "your-mqtt-address";
+const int   MQTT_PORT   = 1883;
+const char *MQTT_NAME   = "cat-food-counter";
+const char *MQTT_RECV   = "time/datetime";
+const char *MQTT_SEND   = "cat-food-counter/data";
+
+// Optional: Provide MQTT authentication information if your broker requires it
+// Leave empty to connect unauthenticated
+const char *MQTT_USER   = "";
+const char *MQTT_PASS   = "";
+
+// Screen config
+const int SCREEN_WAKE_TIME = 5000;  // Time the screen will wake after press in ms
+
+// Voltage config
+const float MCP_OUTPUT_VOLTAGE  = 3.33;     // The actual measured voltage out of the MCP Regulator
+const float VOLTAGE_OFFSET      = -0.71;    // The offset to apply over the voltage measurement to get correct battery voltage reading
+
+#endif
