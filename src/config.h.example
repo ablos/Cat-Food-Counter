@@ -40,4 +40,7 @@ const int LONG_PRESS_TIME    = 300;     // Time needed for long press (this is a
 // Counter config
 const bool RESET_AFTER_FULL = true;     // Resets the counter the next screen wake after max feedings
 
+// Debug config
+const bool SERIAL_DEBUG_ON = false;
+
 #endif

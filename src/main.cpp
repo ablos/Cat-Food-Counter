@@ -79,6 +79,7 @@ void removeFeeding();
 void clearFeedings();
 void printCenteredText(String text, int y);
 void drawLoadingSpinner();
+void print(String text);
 
 // Variables
 Memory memoryData;
@@ -108,8 +109,11 @@ void setup()
     memoryData.lastWakeTime = currentTime;
     writeMemory(&memoryData);
 
-    Serial.begin(115200);
-    Serial.printf("\n\nPress count: %d\n", memoryData.pressCount);
+    if (SERIAL_DEBUG_ON) 
+    {
+        Serial.begin(115200);
+        Serial.printf("\n\nPress count: %d\n", memoryData.pressCount);
+    }
     
     wakeDisplay();
     
@@ -136,7 +140,7 @@ void decideAction(uint8_t pressCount)
     {
         // Handle single press
         case 1: 
-            Serial.println("Single press detected");
+            print("Single press detected");
             pinMode(LONG_PRESS_PIN, INPUT);
             delay(LONG_PRESS_TIME);
             
@@ -154,19 +158,19 @@ void decideAction(uint8_t pressCount)
 
         // Handle double press
         case 2:
-            Serial.println("Double press detected");
+            print("Double press detected");
             removeFeeding();
             break;
 
-        // Handle triple press
-        case 3:
-            Serial.println("Triple press detected");
+        // Handle quadriple press
+        case 4:
+            print("Quadriple press detected");
             clearFeedings();
             break;
 
         // Default behaviour
         default:
-            Serial.println("Too many presses - treating as single");
+            print("Too many presses - treating as single");
             break;
     }
 }
@@ -230,7 +234,7 @@ void turnOffDisplay()
     pinMode(OLED_POWER_PIN, OUTPUT);
     digitalWrite(OLED_POWER_PIN, LOW);
 
-    Serial.println("Display turned off");
+    print("Display turned off");
 }
 
 // Prints text centered horizontally
@@ -410,7 +414,7 @@ void clearAllFeedingsFromMemory()
 // Connects to WiFi and MQTT
 bool connectMqtt(bool drawSpinner) 
 {
-    Serial.println("Connecting to MQTT...");
+    print("Connecting to MQTT...");
     // First read battery voltage, since WiFi can create noise on the analog input
     currentBatteryVoltage = getBatteryVoltage();
 
@@ -470,7 +474,7 @@ bool connectMqtt(bool drawSpinner)
     else
         connected = mqtt.connect(MQTT_NAME);
 
-    Serial.println("Connection successfull: " + String(connected));
+    print("Connection successfull: " + String(connected));
 
     return connected;
 }
@@ -495,7 +499,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
             currentDateTime = currentDateTime * 10 + (payload[i] - '0');
     }
 
-    Serial.printf("Received datetime: %d\n", currentDateTime);
+    print("Received datetime: " + String(currentDateTime));
 }
 
 // Sends the latest data over MQTT
@@ -503,7 +507,7 @@ void sendUpdate()
 {
     if (mqtt.connected()) 
     {
-        Serial.println("Sending update...");
+        print("Sending update...");
 
         String json = "{\"count\":" + String(memoryData.feedingCount) + ", \"datetime\":" + String(getLatestFeedingFromMemory()) + ", \"battery-voltage\":" + String(currentBatteryVoltage) + "}";
 
@@ -514,7 +518,7 @@ void sendUpdate()
 // Adds a feeding moment, both synced to MQTT and to memory
 void addFeeding() 
 {
-    Serial.println("Adding feeding...");
+    print("Adding feeding...");
 
     // Try to connect to MQTT
     bool connected = connectMqtt(true);
@@ -559,7 +563,7 @@ void removeFeeding()
     if (memoryData.feedingCount == 0)
         return;
 
-    Serial.println("Removing feeding...");
+    print("Removing feeding...");
 
     // Remove the latest feeding from memory
     removeLatestFeedingFromMemory();
@@ -581,7 +585,7 @@ void clearFeedings()
     if (memoryData.feedingCount == 0)
         return;
 
-    Serial.println("Clearing all feedings...");
+    print("Clearing all feedings...");
     
     // Clear all feedings from memory
     clearAllFeedingsFromMemory();
@@ -645,4 +649,10 @@ uint32_t calculateCRC32(const uint8_t *data, size_t length)
     }
 
     return crc;
+}
+
+void print(String text) 
+{
+    if (SERIAL_DEBUG_ON)
+        Serial.println(text);
 }
