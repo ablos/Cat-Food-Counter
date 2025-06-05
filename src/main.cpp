@@ -5,6 +5,7 @@
 #include <Adafruit_SSD1306.h>
 #include <PubSubClient.h>
 #include "config.h"
+#include "icons.h"
 
 // Structs
 struct FeedingMoment 
@@ -71,10 +72,13 @@ void addFeedingToMemory(uint32_t dateTimeValue);
 uint32_t getLatestFeedingFromMemory();
 void removeLatestFeedingFromMemory();
 void clearAllFeedingsFromMemory();
-bool connectMqtt();
+bool connectMqtt(bool drawSpinner = false);
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 void addFeeding();
 void removeFeeding();
+void clearFeedings();
+void printCenteredText(String text, int y);
+void drawLoadingSpinner();
 
 // Variables
 Memory memoryData;
@@ -135,8 +139,17 @@ void decideAction(uint8_t pressCount)
             Serial.println("Single press detected");
             pinMode(LONG_PRESS_PIN, INPUT);
             delay(LONG_PRESS_TIME);
-            if (digitalRead(LONG_PRESS_PIN) == LOW)
+            
+            if (digitalRead(LONG_PRESS_PIN) == LOW) 
+            {
                 addFeeding();
+            }
+            else if (RESET_AFTER_FULL && memoryData.feedingCount == 4) 
+            {
+                clearAllFeedingsFromMemory();
+                updateDisplay();
+            }
+            
             break;
 
         // Handle double press
@@ -148,8 +161,7 @@ void decideAction(uint8_t pressCount)
         // Handle triple press
         case 3:
             Serial.println("Triple press detected");
-            clearAllFeedingsFromMemory();
-            updateDisplay();
+            clearFeedings();
             break;
 
         // Default behaviour
@@ -221,25 +233,97 @@ void turnOffDisplay()
     Serial.println("Display turned off");
 }
 
+// Prints text centered horizontally
+void printCenteredText(String text, int y)
+{
+    int16_t x1, y1;
+    uint16_t w, h;
+    
+    // Calculate text dimensions
+    display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+    
+    // Calculate center position
+    int centerX = (SCREEN_WIDTH - w) / 2;
+    
+    // Set cursor and print
+    display.setCursor(centerX, y);
+    display.print(text);
+}
+
+// Draws a rotating loading spinner
+void drawLoadingSpinner() 
+{
+    // Clear display
+    display.clearDisplay();
+
+    // This creates an arc that expands and contracts while rotating
+    unsigned long currentTime = millis();
+    unsigned long cycle = currentTime % 2000;
+    float rotation = (currentTime % 1000) * 2 * PI / 1000.0;
+    
+    // Arc length changes over time
+    float arcLength;
+    if (cycle < 1000)
+        arcLength = (cycle / 1000.0) * (3 * PI / 2); // Expand from 0 to 270°
+    else
+        arcLength = ((2000 - cycle) / 1000.0) * (3 * PI / 2); // Contract back
+    
+    int numPoints = 10;
+    int radius = 15;
+    for (int i = 0; i < numPoints; i++)
+    {
+        float angle = rotation + (arcLength * i / numPoints);
+        
+        int x = 64 + radius * cos(angle);
+        int y = 32 + radius * sin(angle);
+        
+        // Draw 2-pixel thick line
+        display.drawPixel(x, y, SSD1306_WHITE);
+        display.drawPixel(x + 1, y, SSD1306_WHITE);
+        display.drawPixel(x, y + 1, SSD1306_WHITE);
+        display.drawPixel(x + 1, y + 1, SSD1306_WHITE);
+    }
+
+    // Show to display
+    display.display();
+}
+
 // Updates the display information
 void updateDisplay() 
 {
     // Clear buffer
     display.clearDisplay();
     
-    // Set text values
-    display.setTextSize(1);
+    // Set text color
     display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
     
     // Retrieve latest feeding
     FeedingMoment latestMoment;
     latestMoment.dateTimeValue = getLatestFeedingFromMemory();
 
-    // Print text
-    display.println("Latest feeding date: " + latestMoment.dateString());
-    display.println("Latest feeding time: " + latestMoment.timeString());
-    display.println("Current feeding count: " + String(memoryData.feedingCount));
+    // Print information
+    if (memoryData.feedingCount == 0) 
+    {
+        // If feeding count is 0, print no food icon
+        display.drawBitmap(40, 8, no_food_icon, 48, 48, SSD1306_WHITE);
+    }
+    else 
+    {
+        // Print food icon the same amount of times as feeding count
+        int startPoint = 64 - (memoryData.feedingCount * 16);
+        for (int i = 0; i < memoryData.feedingCount; i++) 
+        {
+            display.drawBitmap(i * 32 + startPoint, 0, food_icon, 32, 32, SSD1306_WHITE);
+        }
+        
+        // Print lastest time
+        display.setTextSize(2);
+        printCenteredText(latestMoment.timeString(), 38);
+        
+        // Print lastest date
+        display.setTextSize(1);
+        printCenteredText(latestMoment.dateString(), 57);
+    }
 
     // Put on display
     display.display();
@@ -249,7 +333,7 @@ void updateDisplay()
 }
 
 // Checks if the display is on, if it is on for more than the wake time, turn it off
-bool isDisplayOn() 
+bool isDisplayOn()
 {
     if (millis() - displayStartTime > SCREEN_WAKE_TIME) 
     {
@@ -324,7 +408,7 @@ void clearAllFeedingsFromMemory()
 }
 
 // Connects to WiFi and MQTT
-bool connectMqtt() 
+bool connectMqtt(bool drawSpinner) 
 {
     Serial.println("Connecting to MQTT...");
     // First read battery voltage, since WiFi can create noise on the analog input
@@ -350,13 +434,30 @@ bool connectMqtt()
 
     // Wait for connection with 10 sec timeout
     unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT)
-        delay(10);
+    while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT) 
+    {
+        if (drawSpinner)
+            drawLoadingSpinner();
+            
+        delay(1);
+    }
         
     // If we failed to connect after timeout return
-    if (WiFi.status() != WL_CONNECTED)
+    if (WiFi.status() != WL_CONNECTED) 
+    {   
+        // Show connection failed icon
+        display.clearDisplay();
+        display.drawBitmap(40, 8, connection_failed_icon, 48, 48, SSD1306_WHITE);
+        display.display();
+        delay(3000);
         return false;
-        
+    }
+    
+    // Show connection successful icon
+    display.clearDisplay();
+    display.drawBitmap(40, 8, connection_success_icon, 48, 48, SSD1306_WHITE);
+    display.display();
+
     // Set up MQTT
     mqtt.setServer(MQTT_SERVER, MQTT_PORT);
     mqtt.setCallback(mqttCallback);
@@ -413,14 +514,10 @@ void sendUpdate()
 // Adds a feeding moment, both synced to MQTT and to memory
 void addFeeding() 
 {
-    // If count at max, don´t do anything
-    if (memoryData.feedingCount >= 4)
-        return;
-
     Serial.println("Adding feeding...");
 
     // Try to connect to MQTT
-    bool connected = connectMqtt();
+    bool connected = connectMqtt(true);
     if (connected)
     {
         // Subscribe to the time topic
@@ -436,7 +533,7 @@ void addFeeding()
     }
     
     // Check if current date is still as last feeding date, if not reset feedings
-    if (memoryData.feedingCount > 0 && currentDateTime / 10000 != getLatestFeedingFromMemory() / 10000)
+    if (memoryData.feedingCount > 0 && getLatestFeedingFromMemory() != 99999999 && currentDateTime != 99999999 && currentDateTime / 10000 != getLatestFeedingFromMemory() / 10000)
         clearAllFeedingsFromMemory();
 
     // Add feeding with current time to memory
@@ -450,15 +547,44 @@ void addFeeding()
 
     // Disconnect MQTT
     disconnectMqtt();
+    
+    // Set display start time to now, so there is still enough time to view the updated value
+    displayStartTime = millis();
 }
 
 // Removes the last feeding moment both from MQTT and memory
 void removeFeeding() 
 {
+    // Dont do anything if feeding count is already at 0
+    if (memoryData.feedingCount == 0)
+        return;
+
     Serial.println("Removing feeding...");
 
     // Remove the latest feeding from memory
     removeLatestFeedingFromMemory();
+    
+    // Update the display
+    updateDisplay();
+    
+    // Try to connect to MQTT and send update
+    if (connectMqtt())
+        sendUpdate();
+        
+    // Disconnect MQTT
+    disconnectMqtt();
+}
+
+void clearFeedings() 
+{
+    // Dont do anything if feeding count is already at 0
+    if (memoryData.feedingCount == 0)
+        return;
+
+    Serial.println("Clearing all feedings...");
+    
+    // Clear all feedings from memory
+    clearAllFeedingsFromMemory();
     
     // Update the display
     updateDisplay();

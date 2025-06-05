@@ -4,7 +4,7 @@
 // WiFi Config
 const char *WIFI_SSID    = "your-wifi-name";
 const char *WIFI_PASS    = "your-wifi-pass";
-const int   WIFI_TIMEOUT = 5000;
+const int   WIFI_TIMEOUT = 10000;
 
 // Optional: Set static IP for faster connection (better battery life)
 // Leave empty to use DHCP (make your router decide which IP to give)
@@ -16,9 +16,9 @@ const char *DNS_SERVER  = "";   // e.g. "192.168.1.1"
 // MQTT Config
 const char *MQTT_SERVER  = "your-mqtt-address";
 const int   MQTT_PORT    = 1883;
-const char *MQTT_NAME    = "cat-food-counter";
+const char *MQTT_NAME    = "pet-food-counter";
 const char *MQTT_RECV    = "datetime/current";
-const char *MQTT_SEND    = "cat-food-counter/data";
+const char *MQTT_SEND    = "pet-food-counter/data";
 const int   MQTT_TIMEOUT = 3000;
 
 // Optional: Provide MQTT authentication information if your broker requires it
@@ -36,5 +36,8 @@ const float VOLTAGE_OFFSET      = -0.71;    // The offset to apply over the volt
 // Button config
 const int MULTI_PRESS_WINDOW = 500;     // Time window before stopping to check for next press
 const int LONG_PRESS_TIME    = 300;     // Time needed for long press (this is added on top of the MULTI_PRESS_WINDOW time)
+
+// Counter config
+const bool RESET_AFTER_FULL = true;     // Resets the counter the next screen wake after max feedings
 
 #endif
