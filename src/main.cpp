@@ -47,9 +47,9 @@ struct Memory
 };
 
 // Defenitions
-#define MULTI_PRESS_WINDOW 1000
 #define OLED_POWER_PIN D4
 #define VDIV_ENABLE_PIN D5
+#define LONG_PRESS_PIN D7
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -133,24 +133,21 @@ void decideAction(uint8_t pressCount)
         // Handle single press
         case 1: 
             Serial.println("Single press detected");
-            Serial.println(getBatteryVoltage());
+            pinMode(LONG_PRESS_PIN, INPUT);
+            delay(LONG_PRESS_TIME);
+            if (digitalRead(LONG_PRESS_PIN) == LOW)
+                addFeeding();
             break;
 
         // Handle double press
         case 2:
             Serial.println("Double press detected");
-            addFeeding();
+            removeFeeding();
             break;
 
         // Handle triple press
         case 3:
             Serial.println("Triple press detected");
-            removeFeeding();
-            break;
-
-        // Handle quadriple press
-        case 4:
-            Serial.println("Quadriple press detected");
             clearAllFeedingsFromMemory();
             updateDisplay();
             break;
@@ -353,7 +350,7 @@ bool connectMqtt()
 
     // Wait for connection with 10 sec timeout
     unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000)
+    while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT)
         delay(10);
         
     // If we failed to connect after timeout return
@@ -409,13 +406,17 @@ void sendUpdate()
 
         String json = "{\"count\":" + String(memoryData.feedingCount) + ", \"datetime\":" + String(getLatestFeedingFromMemory()) + ", \"battery-voltage\":" + String(currentBatteryVoltage) + "}";
 
-        mqtt.publish(MQTT_SEND, json.c_str());
+        mqtt.publish(MQTT_SEND, json.c_str(), true);
     }
 }
 
 // Adds a feeding moment, both synced to MQTT and to memory
 void addFeeding() 
 {
+    // If count at max, don´t do anything
+    if (memoryData.feedingCount >= 4)
+        return;
+
     Serial.println("Adding feeding...");
 
     // Try to connect to MQTT
@@ -427,7 +428,7 @@ void addFeeding()
         
         // Wait for the retained message with 3 sec timeout
         unsigned long start = millis();
-        while (millis() - start < 3000 && currentDateTime == 99999999) 
+        while (millis() - start < MQTT_TIMEOUT && currentDateTime == 99999999) 
         {
             mqtt.loop();
             yield();
@@ -477,13 +478,13 @@ bool readMemory(Memory* data)
     {
         uint32_t crcOfData = calculateCRC32((uint8_t *)&data->lastWakeTime, sizeof(Memory) - sizeof(data->crc32));
         
-        if (crcOfData == data->crc32)
+        if (crcOfData == data->crc32 && data->feedingCount <= 4)
             return true;
     }
     
     // Initialize with defaults if invalid
-    data->lastWakeTime = 0;
-    data->pressCount = 0;
+    memset(data, 0, sizeof(Memory));
+
     return false;
 }
 
